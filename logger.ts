@@ -55,7 +55,7 @@ export interface Logger {
     fatal(msg: any, ...args: any[]): void
 
     log(level: LogLevel, msg: string, ...args: any[]): void
-    getLogger(childName: string): Logger
+    getLogger(childName: string, relative?:boolean): Logger
 }
 
 export interface LogFormatter {
@@ -102,7 +102,7 @@ export interface LogEvent {
 }
 
 class LoggerImpl implements Logger {
-    private name: string
+    name: string
     _level: LogLevel | null
     private parent: LoggerImpl | null
     private appender: LogAppender | null
@@ -197,9 +197,9 @@ class LoggerImpl implements Logger {
         }
     }
 
-    getLogger(childName: string): Logger {
+    getLogger(childName: string, relative?: boolean): Logger {
         return new LoggerImpl(
-            `${this.name}.${childName}`,
+            relative == false ? childName : `${this.name}.${childName}`,
             /*level*/ null,
             /*appender*/ null,
             this
@@ -229,11 +229,11 @@ export class LoggerFactory {
     }
 
     set rootName(name: string) {
-        this._rootName = name
+        this.rootLogger.name = name
     }
 
-    getLogger(name: string): Logger {
-        return this.rootLogger.getLogger(name)
+    getLogger(name: string, relative?: boolean): Logger {
+        return this.rootLogger.getLogger(name, relative)
     }
 }
 
@@ -244,9 +244,9 @@ export { loggerFactory }
 // const logLevel = parseLevel(process.env.VUE_APP_LOG_LEVEL)
 // loggerFactory.level = logLevel
 
-export function getLogger(name: string): Logger {
+export function getLogger(name: string, relative?: boolean): Logger {
     if (name.endsWith('.js')) {
         name = name.slice(0, name.length - 3)
     }
-    return loggerFactory.getLogger(name)
+    return loggerFactory.getLogger(name, relative)
 }

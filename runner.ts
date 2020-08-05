@@ -1,61 +1,151 @@
-import { getLogger } from './logger.ts'
 import { parse } from "https://deno.land/std/flags/mod.ts";
+import { exec as real_exec, execSequence,OutputMode} from "https://deno.land/x/exec/mod.ts";
+import * as path from "https://deno.land/std/path/mod.ts"
+import { getLogger, loggerFactory, Logger } from "./logger.ts";
 
-const defaultLogger = getLogger("script")
+loggerFactory.level = "info";
+loggerFactory.rootName = "deno.runner";
 
-export { defaultLogger as log }
-export { getLogger }
+const scriptLogger = getLogger("script");
+
+export { scriptLogger as log };
+
+function getLoggerWithoutPrefix(name:string) : Logger {
+  return getLogger(name, /*relative*/ false)
+}
+
+export {  getLoggerWithoutPrefix as getLogger };
 /**
  * Task context
  */
-export interface Context {
-    args:{ [key:string]: any }
+export interface TaskContext {
+  args: { [key: string]: any };
 }
 
-type TaskPromise =  () => Promise<any> | any | void
-type TaskFunc =  () => any | void
-type TaskFuncCtxt =  (context:Context) => any | void
+type Task = ((context: TaskContext) => any) | (() => any);
+type NamedTasks = { [name: string]: Task }
 
-type Task = TaskPromise | TaskFunc | TaskFuncCtxt
+const log = getLogger("run");
 
-export async function run(namedTasks:{[name:string]:Task}, defaultFunc='help'){
-  const log = getLogger('main')
-  log.level = 'info'
-  //console.log("running main with args:",Deno.args)
-  const args = Deno.args
-  const taskArgs = parse(args)
-  let tasks = taskArgs['_'] as string[]
-  if(!tasks || tasks.length==0){
-      tasks = [defaultFunc]
+module BuiltinTasks {
+  export async function clear_cache(){
+    log.info("Clear cache")
+    // ~/.cache/deno/*
+    const home = Deno.env.get("HOME")    
+    await Deno.remove(`${home}/.cache/deno/`, { recursive: true })
   }
-  if(taskArgs.log){
-      log.level = taskArgs.log
+}
+
+const builtins:NamedTasks = { _clear_cache: BuiltinTasks.clear_cache }
+
+export async function run(
+  namedTasks: NamedTasks,
+  opts: { dir?: string; default?: string, logLevel?:string },
+) {
+  const defaultTaskName = opts.default || "help";
+  const runDir = opts.dir || ".";
+
+  const taskArgs = parse(Deno.args);
+
+  if (taskArgs.log) {
+    loggerFactory.level = taskArgs.log;
+  }
+  if (opts.logLevel) {
+    loggerFactory.level = opts.logLevel;
   }
 
-  delete taskArgs['_']
-  for(var i =0; i < tasks.length; i++){
-      const taskName = tasks[i]
-      let task: Task
+  let tasks = taskArgs["_"] as string[];
+  if (!tasks || tasks.length == 0) {
+    tasks = [defaultTaskName];
+  }
+  delete taskArgs["_"];
+
+  const initCwd = Deno.cwd()
+  setWorkingDir(runDir)
+  try {
+      await runTasks(namedTasks, tasks, taskArgs)
+  } finally {
+    Deno.chdir(initCwd)
+  }
+}
+
+function setWorkingDir(runDir:string){
+
+  // this env var must be set by the wrapping script (usually deno-sh)
+  const entryScript = Deno.env.get("DENO_ENTRY_SCRIPT")
+  log.trace("entryScript", entryScript)
+  if(!entryScript){
+    throw `Not env var 'DENO_ENTRY_SCRIPT' env set. THis needs to be set to calculate the basedir to use for all path related operations`
+  }
+
+  const entryScriptDir = path.dirname(entryScript)
+  log.trace("entryScriptDir",entryScriptDir)
+
+  const baseDir = path.join(entryScriptDir, runDir)
+  log.trace("baseDir",baseDir)
+
+  Deno.chdir(baseDir)
+}
+
+async function runTasks(namedTasks: NamedTasks, tasksToRun:string[], taskArgs:{}){
+    for (var i = 0; i < tasksToRun.length; i++) {
+      const taskName = tasksToRun[i];
+      let task: Task;
       try {
-          task = namedTasks[`${taskName}`] as Task
-          log.trace('found task', task)
-      } catch(err){
-          log.error("err", err)
-          throw `No task '${taskName}' exists`
+        task = namedTasks[taskName];
+        if(!task){
+            task = builtins[taskName];
+        }
+        log.trace("found task", task);
+      } catch (err) {
+        log.error("error getting task to run", err);
+        throw `No task '${taskName}' exists`;
       }
-      if(!task){
-          log.error(`could not find task function '${taskName}'`, namedTasks)
-          throw `No task '${taskName}' exists`
+      if (!task) {
+        log.error(`could not find task function '${taskName}'`, { userTasks: namedTasks, builtinTasks: builtins });
+        throw `No task function with name '${taskName}' exists`;
       }
       try {
-          const taskContext:Context = { args:{ ...taskArgs }}
-          await task(taskContext)
+        const taskContext: TaskContext = { args: { ...taskArgs } };
+        await task(taskContext);
+      } catch (err) {
+        log.error(`Task '${taskName}' threw an error`, err);
+        throw `Task '${taskName} threw an error`;
       }
-      catch(err){
-          log.error(`Task '${taskName}' threw an error`, err)
-          throw `Task '${taskName} threw an error`
-      }
+    }
+}
+
+/**
+ * Run a script or function, optionally setting a relative dir to run it within (temporary
+ * change to the cwd)
+ */
+export async function exec(opts:{ cmd:(()=>any) | string | string[], dir?:string }) {
+  const log = getLogger('build.exec')
+
+  const cwd = Deno.cwd()
+  if(opts.dir){
+    Deno.chdir(opts.dir)
   }
-}   
+  try {
+    const cmd = opts.cmd
+    if(Array.isArray(cmd)){
+      log.trace('exec (string[])', cmd)
+      
+      await execSequence(cmd, { output: OutputMode.StdOut, continueOnError: false });
+    } else if(typeof cmd == 'string'){
+      log.trace('exec (string)', cmd)
+      
+      await real_exec(cmd, { output: OutputMode.StdOut })
+    } else {
+      log.trace('exec (function)', cmd)
+
+      await cmd()
+    }
+  } finally {  
+    if(opts.dir){
+      Deno.chdir(cwd)
+    }
+  }
+}
 
 export default run;
