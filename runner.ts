@@ -20,6 +20,7 @@ export {  getLoggerWithoutPrefix as getLogger };
  */
 export interface TaskContext {
   args: { [key: string]: any };
+  log: Logger  
 }
 
 type Task = ((context: TaskContext) => any) | (() => any);
@@ -107,7 +108,7 @@ async function runTasks(namedTasks: NamedTasks, tasksToRun:string[], taskArgs:{}
       }
       log.debug(`running task: '${taskName}'`)
       try {
-        const taskContext: TaskContext = { args: { ...taskArgs } };
+        const taskContext: TaskContext = { args: { ...taskArgs }, log: getLoggerWithoutPrefix(`task.${taskName}`) };
         await task(taskContext);
       } catch (err) {
         log.error(`Task '${taskName}' threw an error`, err);
