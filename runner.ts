@@ -29,11 +29,11 @@ type NamedTasks = { [name: string]: Task }
 const log = getLogger("run");
 
 module BuiltinTasks {
-  export async function clear_cache(){
-    log.info("Clear cache")
-    // ~/.cache/deno/*
+  export async function clear_cache(ctxt:TaskContext){
     const home = Deno.env.get("HOME")    
-    await Deno.remove(`${home}/.cache/deno/`, { recursive: true })
+    const cacheDir = `${home}/.cache/deno/`
+    ctxt.log.info(`Deleting cache dir: '${cacheDir}'`)
+    await Deno.remove(cacheDir, { recursive: true })
   }
 }
 
