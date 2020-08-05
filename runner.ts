@@ -58,4 +58,4 @@ export async function run(namedTasks:{[name:string]:Task}, defaultFunc='help'){
   }
 }   
 
-export default main;
+export default run;
