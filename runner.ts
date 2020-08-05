@@ -105,6 +105,7 @@ async function runTasks(namedTasks: NamedTasks, tasksToRun:string[], taskArgs:{}
         log.error(`could not find task function '${taskName}'`, { userTasks: namedTasks, builtinTasks: builtins });
         throw `No task function with name '${taskName}' exists`;
       }
+      log.debug(`running task: '${taskName}'`)
       try {
         const taskContext: TaskContext = { args: { ...taskArgs } };
         await task(taskContext);
