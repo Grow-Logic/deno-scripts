@@ -28,13 +28,14 @@ type NamedTasks = { [name: string]: Task };
 
 const log = getLogger("run");
 
-module utils {
+module util{
     export function rightPad(s: string, size: number, padChar = " "): string {
         while (s.length < size) {
             s = s + padChar;
         }
         return s;
     }
+
     export function extractFunctionDocs(func: Function): string | undefined {
         if (!func) {
             return undefined;
@@ -71,8 +72,18 @@ module utils {
                 return undefined;
             }
         }
-
         return undefined;
+    }
+
+    export function printTasks(lines:string[], tasks: NamedTasks){
+       Object.keys(tasks).sort().forEach((key) => {
+            let docs = util.extractFunctionDocs(tasks[key]) || "";
+            let name = key;
+            if (name.startsWith("task_")) {
+                name = name.substring(5);
+            }
+            lines.push(`     ${util.rightPad(name, 25)} : ${docs}`);
+        });
     }
 }
 // Create a builtin using the user supplied args so we can build help tasks etc
@@ -97,20 +108,10 @@ function newBuiltinsTasks(
 
             lines.push("Help:");
             lines.push("  User Tasks:");
-            Object.keys(namedTasks).forEach((key) => {
-                let docs = utils.extractFunctionDocs(namedTasks[key]) || "";
-                let name = key;
-                if (name.startsWith("task_")) {
-                    name = name.substring(5);
-                }
-                lines.push(`     ${utils.rightPad(name, 25)} : ${docs}`);
-            });
+            util.printTasks(lines, namedTasks)
 
             lines.push("  Builtin Tasks:");
-            Object.keys(builtins).forEach((key) => {
-                let docs = utils.extractFunctionDocs(builtins[key]) || "";
-                lines.push(`     ${utils.rightPad(key, 25)} : ${docs}`);
-            });
+            util.printTasks(lines, builtins)
 
             lines.push("  User supplied options:");
             lines.push(`      defaultTask: ${opts.default}`);
@@ -142,6 +143,10 @@ export async function run(userTasks: NamedTasks, opts: { dir?: string; default?:
         tasks = [defaultTaskName];
     }
     delete taskArgs["_"];
+
+    if(taskArgs['help']){
+        tasks = [ '_help']
+    }
 
     const initCwd = Deno.cwd();
     setWorkingDir(runDir);
@@ -184,12 +189,11 @@ async function runTasks(userTasks: NamedTasks, builtinsTasks: NamedTasks, tasksT
         let task: Task;
         task = userTasks[taskName];
         if (!task) {
-            task = builtinsTasks[taskName];
-            if (!task) {
-                task = builtinsTasks[`task_${taskName}`];
-            }
+            task = userTasks[`task_${taskName}`];
         }
-        log.trace("found task", task);
+        if (!task) {
+            task = builtinsTasks[taskName];
+        }
         if (!task) {
             log.error(`could not find task function '${taskName}'. Run '_help' to show available tasks`);
             return;
@@ -212,10 +216,15 @@ async function runTasks(userTasks: NamedTasks, builtinsTasks: NamedTasks, tasksT
  * Run a script or function, optionally setting a relative dir to run it within (temporary
  * change to the cwd)
  */
-export async function exec(opts: { cmd: (() => any) | string | string[]; dir?: string }) {
+export async function exec(opts: string | string[] | { cmd: (() => any) | string | string[]; dir?: string }) {
     const log = getLogger("build.exec");
-
-    const cwd = Deno.cwd();
+    if(typeof opts == 'string'){
+        opts = { cmd:opts }
+    }
+    else if(Array.isArray(opts)){
+         opts = { cmd:opts }
+    }
+    const cwdOrginal = Deno.cwd();
     if (opts.dir) {
         Deno.chdir(opts.dir);
     }
@@ -223,20 +232,17 @@ export async function exec(opts: { cmd: (() => any) | string | string[]; dir?: s
         const cmd = opts.cmd;
         if (Array.isArray(cmd)) {
             log.trace("exec (string[])", cmd);
-
             await execSequence(cmd, { output: OutputMode.StdOut, continueOnError: false });
         } else if (typeof cmd == "string") {
             log.trace("exec (string)", cmd);
-
             await real_exec(cmd, { output: OutputMode.StdOut });
         } else {
             log.trace("exec (function)", cmd);
-
             await cmd();
         }
     } finally {
         if (opts.dir) {
-            Deno.chdir(cwd);
+            Deno.chdir(cwdOrginal);
         }
     }
 }
