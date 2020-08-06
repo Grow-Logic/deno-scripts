@@ -124,7 +124,7 @@ function newBuiltinsTasks(
     opts: { dir?: string; default?: string; logLevel?: string }
 ): NamedTasks {
     const builtins: NamedTasks = {
-        _clear_cache: async function (ctxt: TaskContext) {
+        _cache_clear: async function (ctxt: TaskContext) {
             "Clear the deno script cache in $HOME/.cache/deno";
 
             const home = Deno.env.get("HOME");
