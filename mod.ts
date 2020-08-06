@@ -24,7 +24,32 @@ export interface TaskContext {
 }
 
 type Task = ((context: TaskContext) => any) | (() => any);
+type TaskArgs = { [key:string]:any } & { log?:string, deir?:string }
 type NamedTasks = { [name: string]: Task };
+
+function parseTaskArgs() : TaskArgs {
+    return parse(Deno.args) as TaskArgs;
+}
+
+/*
+* Allow callers to access the task contect globally
+*/
+export function getTaskContext(taskName:string = 'default'){
+    return {
+        args: parseTaskArgs(),
+        log: getLoggerWithoutPrefix(`task.${taskName}`),
+    } as TaskContext;
+}
+
+// we parse all the args now so we can setup all the logger etc, even before user call 'run'
+function init(){
+    const taskArgs = parseTaskArgs();
+    if (taskArgs.log) {
+        loggerFactory.level = taskArgs.log;
+    }  
+}
+
+init()
 
 const log = getLogger("run");
 
@@ -125,18 +150,18 @@ function newBuiltinsTasks(
     return builtins;
 }
 
+/**
+ * Main entry point for users of this module
+ */
 export async function run(userTasks: NamedTasks, opts: { dir?: string; default?: string; logLevel?: string }) {
     const defaultTaskName = opts.default || "_help";
     const runDir = opts.dir || ".";
+    const taskArgs = parseTaskArgs()
 
-    const taskArgs = parse(Deno.args);
-
-    if (taskArgs.log) {
-        loggerFactory.level = taskArgs.log;
-    }
-    if (opts.logLevel) {
+    //allow setting of default log level. Commandline args win
+    if (!taskArgs.log && opts.logLevel) {
         loggerFactory.level = opts.logLevel;
-    }
+    }  
 
     let tasks = taskArgs["_"] as string[];
     if (!tasks || tasks.length == 0) {
