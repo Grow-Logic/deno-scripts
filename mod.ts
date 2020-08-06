@@ -44,9 +44,16 @@ export function getTaskContext(taskName:string = 'default'){
 // we parse all the args now so we can setup all the logger etc, even before user call 'run'
 function init(){
     const taskArgs = parseTaskArgs();
+
+    // allow passing '--trace' directly through as an option
+    ['error', 'warn', 'info', 'debug', 'trace'].forEach((level)=>{
+        if(taskArgs[level]){
+          loggerFactory.level = level;   
+        }     
+    })
     if (taskArgs.log) {
         loggerFactory.level = taskArgs.log;
-    }  
+    }    
 }
 
 init()
@@ -150,12 +157,13 @@ function newBuiltinsTasks(
     return builtins;
 }
 
+type RunOpts = { dir?: string; default?: string; logLevel?: string, tasks:NamedTasks, meta:any }
 /**
  * Main entry point for users of this module
  */
-export async function run(userTasks: NamedTasks, opts: { dir?: string; default?: string; logLevel?: string }) {
+export async function run(opts: RunOpts) {
+
     const defaultTaskName = opts.default || "_help";
-    const runDir = opts.dir || ".";
     const taskArgs = parseTaskArgs()
 
     //allow setting of default log level. Commandline args win
@@ -174,22 +182,23 @@ export async function run(userTasks: NamedTasks, opts: { dir?: string; default?:
     }
 
     const initCwd = Deno.cwd();
-    setWorkingDir(runDir);
-    const builtinTasks = newBuiltinsTasks(userTasks, opts);
+    setWorkingDir(opts);
+    const builtinTasks = newBuiltinsTasks(opts.tasks, opts);
     try {
-        await runTasks(userTasks, builtinTasks, tasks, taskArgs);
+        await runTasks(opts.tasks, builtinTasks, tasks, taskArgs);
     } finally {
         Deno.chdir(initCwd);
     }
 }
 
-function setWorkingDir(runDir: string) {
-    // this env var must be set by the wrapping script (usually deno-sh)
-    const entryScript = Deno.env.get("DENO_ENTRY_SCRIPT");
-    log.trace("entryScript", entryScript);
-    if (!entryScript) {
-        throw `Not env var 'DENO_ENTRY_SCRIPT' env set. THis needs to be set to calculate the basedir to use for all path related operations`;
+function setWorkingDir(opts: RunOpts) {
+    if(!opts.meta){
+        throw `No 'meta' (import.meta.url) set on RunArgs. THis needs to be set to calculate the basedir to use for all path related operations`;
     }
+    const runDir = opts.dir || '.'
+    // extract the scritp location from the calling script
+    const entryScript = new URL(opts.meta.url).pathname
+    log.trace("entryScript", entryScript);
 
     const entryScriptDir = path.dirname(entryScript);
     log.trace("entryScriptDir", entryScriptDir);
