@@ -219,7 +219,8 @@ function setWorkingDir(opts: RunOpts) {
  */
 async function runTasks(userTasks: NamedTasks, builtinsTasks: NamedTasks, tasksToRun: string[], taskArgs: {}) {
     for (var i = 0; i < tasksToRun.length; i++) {
-        const taskName = tasksToRun[i];
+        // allow both underscore and dashes in task names (to stay inline with cli conventions)
+        const taskName = tasksToRun[i].replace('-', '_');
         let task: Task;
         task = userTasks[taskName];
         if (!task) {
