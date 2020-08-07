@@ -195,7 +195,10 @@ function setWorkingDir(opts: RunOpts) {
     if(!opts.meta){
         throw `No 'meta' (import.meta.url) set on RunArgs. THis needs to be set to calculate the basedir to use for all path related operations`;
     }
-    const runDir = opts.dir || '.'
+    const runDir = opts.dir
+    if(!runDir){
+        return
+    }
     // extract the scritp location from the calling script
     const entryScript = new URL(opts.meta.url).pathname
     log.trace("entryScript", entryScript);
