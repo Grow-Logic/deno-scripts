@@ -191,6 +191,10 @@ export async function run(opts: RunOpts) {
     }
 }
 
+function isWindows(){
+    return Deno.build.os === "windows"
+}
+
 function setWorkingDir(opts: RunOpts) {
     if(!opts.meta){
         throw `No 'meta' (import.meta.url) set on RunArgs. THis needs to be set to calculate the basedir to use for all path related operations`;
@@ -201,6 +205,10 @@ function setWorkingDir(opts: RunOpts) {
     }
     // extract the scritp location from the calling script
     const entryScript = new URL(opts.meta.url).pathname
+    if(isWindows()){
+        // remove leading '/' for windows paths
+        entryScript = entryScript.substring(1)   
+    }
     log.trace("entryScript", entryScript);
 
     const entryScriptDir = path.dirname(entryScript);
