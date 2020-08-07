@@ -204,7 +204,7 @@ function setWorkingDir(opts: RunOpts) {
         return
     }
     // extract the scritp location from the calling script
-    const entryScript = new URL(opts.meta.url).pathname
+    let entryScript = new URL(opts.meta.url).pathname
     if(isWindows()){
         // remove leading '/' for windows paths
         entryScript = entryScript.substring(1)   
