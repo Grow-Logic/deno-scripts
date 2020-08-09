@@ -1,12 +1,8 @@
 import { parse } from 'https://deno.land/std/flags/mod.ts'
-import {
-    exec as real_exec,
-    execSequence,
-    OutputMode,
-} from 'https://deno.land/x/exec/mod.ts'
 import * as path from 'https://deno.land/std/path/mod.ts'
 import { getLogger, loggerFactory, Logger } from './logger.ts'
 
+import { exec as exec2 } from 'https://deno.land/x/execute@v1.1.0/mod.ts'
 loggerFactory.level = 'info'
 loggerFactory.rootName = 'deno.runner'
 
@@ -293,7 +289,7 @@ export async function exec(
           }
 ): Promise<void> {
     const log = getLogger('build.exec')
-    if (typeof opts == 'string') {
+    if (typeof opts === 'string') {
         opts = { cmd: opts }
     } else if (Array.isArray(opts)) {
         opts = { cmd: opts }
@@ -306,13 +302,12 @@ export async function exec(
         const cmd = opts.cmd
         if (Array.isArray(cmd)) {
             log.trace('exec (string[])', cmd)
-            await execSequence(cmd, {
-                output: OutputMode.StdOut,
-                continueOnError: false,
-            })
+            for (let i = 0; i < cmd.length; i++) {
+                await exec2(cmd[i])
+            }
         } else if (typeof cmd == 'string') {
             log.trace('exec (string)', cmd)
-            await real_exec(cmd, { output: OutputMode.StdOut })
+            await exec2(cmd)
         } else {
             log.trace('exec (function)', cmd)
             await cmd()
