@@ -2,7 +2,6 @@ import { parse } from 'https://deno.land/std/flags/mod.ts'
 import * as path from 'https://deno.land/std/path/mod.ts'
 import { getLogger, loggerFactory, Logger } from './logger.ts'
 
-import { exec as exec2 } from 'https://deno.land/x/execute@v1.1.0/mod.ts'
 loggerFactory.level = 'info'
 loggerFactory.rootName = 'deno.runner'
 
@@ -267,7 +266,9 @@ async function runTasks(
                 args: { ...taskArgs },
                 log: getLoggerWithoutPrefix(`task.${taskName}`),
             }
-            await task(taskContext)
+            await task(taskContext).catch((err: unknown) => {
+                throw err
+            })
         } catch (err) {
             log.error(`Task '${taskName}' threw an error`, err)
             throw `Task '${taskName} threw an error`
@@ -303,21 +304,57 @@ export async function exec(
         if (Array.isArray(cmd)) {
             log.trace('exec (string[])', cmd)
             for (let i = 0; i < cmd.length; i++) {
-                await exec2(cmd[i])
+                const c = cmd[i]
+                await _exec(c).catch((err) => {
+                    throw err
+                })
             }
         } else if (typeof cmd == 'string') {
             log.trace('exec (string)', cmd)
-            await exec2(cmd)
+            await _exec(cmd).catch((err) => {
+                throw err
+            })
         } else {
             log.trace('exec (function)', cmd)
-            await cmd()
+            await cmd().catch((err: unknown) => {
+                throw err
+            })
         }
     } catch (err) {
         log.error('error while executing', opts, err)
+        throw err
     } finally {
         if (opts.dir) {
             Deno.chdir(cwdOrginal)
         }
+    }
+}
+
+export type ExecOptions = Omit<Deno.RunOptions, 'stdout' | 'stderr'>
+
+const _exec = async (cmd: string | string[] | ExecOptions) => {
+    let opts: Deno.RunOptions
+    if (typeof cmd === 'string') {
+        opts = {
+            cmd: cmd.split(' '),
+        }
+    } else if (Array.isArray(cmd)) {
+        opts = {
+            cmd,
+        }
+    } else {
+        opts = cmd
+    }
+
+    opts.stdout = 'inherit'
+    opts.stderr = 'piped'
+
+    const process = Deno.run(opts)
+    const { success } = await process.status()
+
+    if (!success) {
+        process.close()
+        throw new Error(`error while running '${cmd}'`)
     }
 }
 
