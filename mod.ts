@@ -347,7 +347,7 @@ const _exec = async (cmd: string | string[] | ExecOptions) => {
     }
 
     opts.stdout = 'inherit'
-    opts.stderr = 'piped'
+    opts.stderr = 'inherit'
 
     const process = Deno.run(opts)
     const { success } = await process.status()
